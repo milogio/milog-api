@@ -2,7 +2,7 @@
 
 use Illuminate\Database\Seeder;
 
-class PageSeeder extends Seeder
+class SiteSeeder extends Seeder
 {
     /**
      * Run the database seeds.
@@ -11,6 +11,6 @@ class PageSeeder extends Seeder
      */
     public function run()
     {
-        // do nothing for now
+        //
     }
 }
