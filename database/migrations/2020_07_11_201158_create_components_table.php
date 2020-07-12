@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class PageUser extends Migration
+class CreateComponentsTable extends Migration
 {
     /**
      * Run the migrations.
@@ -13,8 +13,10 @@ class PageUser extends Migration
      */
     public function up()
     {
-        Schema::table('page_user', function (Blueprint $table) {
-            //
+        Schema::create('components', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
         });
     }
 
@@ -25,8 +27,6 @@ class PageUser extends Migration
      */
     public function down()
     {
-        Schema::table('page_user', function (Blueprint $table) {
-            //
-        });
+        Schema::dropIfExists('components');
     }
 }
