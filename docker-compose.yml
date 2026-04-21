@@ -1,4 +1,3 @@
-version: '3.5'
 services:
   milog-mysql:
     image: mysql:8.0
@@ -15,7 +14,10 @@ services:
     networks:
       - "milog-network"
   milog-phpfpm:
-    image: chrsc/php-fpm-laravel:latest
+    build:
+      context: .
+      dockerfile: docker/php-fpm/Dockerfile
+    image: milog-php-fpm:8.1
     container_name: "milog-phpfpm"
     depends_on:
       - milog-mysql
