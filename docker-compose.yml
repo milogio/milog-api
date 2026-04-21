@@ -1,7 +1,7 @@
 version: '3.5'
 services:
   milog-mysql:
-    image: mysql:latest
+    image: mysql:8.0
     container_name: "milog-mysql"
     volumes:
       - "./docker/config/mysql:/etc/mysql/conf.d"
