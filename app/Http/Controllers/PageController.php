@@ -12,9 +12,19 @@ class PageController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        $pages = Page::all();
+        $userId = $request->user()->id;
+
+        $pages = Page::whereHas('sites.users', function ($query) use ($userId) {
+            $query->where('users.id', $userId);
+        })->select('pages.id', 'pages.name')
+            ->with(['sites' => function ($query) use ($userId) {
+                $query->whereHas('users', function ($query) use ($userId) {
+                    $query->where('users.id', $userId);
+                })->select('sites.id', 'sites.name');
+            }])
+            ->get();
 
         return response()->json($pages);
     }
