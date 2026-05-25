@@ -11,6 +11,7 @@ Homestead.yaml
 npm-debug.log
 yarn-error.log
 docker/data/db/
+docker/data/postgres/
 docker/data/redis/
 docker/logs/nginx/
 build

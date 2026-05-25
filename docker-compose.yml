@@ -1,16 +1,17 @@
 services:
-  milog-mysql:
-    image: mysql:8.0
-    container_name: "milog-mysql"
+  milog-postgres:
+    image: postgres:17-alpine
+    container_name: "milog-postgres"
     volumes:
-      - "./docker/config/mysql:/etc/mysql/conf.d"
-      - "./docker/data/db:/var/lib/mysql"
+      - "./docker/data/postgres:/var/lib/postgresql/data"
+      - "./docker/postgres/init:/docker-entrypoint-initdb.d"
     restart: always
     ports:
-      - "3923:3306"
+      - "3923:5432"
     environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: milog
+      POSTGRES_DB: milog
+      POSTGRES_USER: milog
+      POSTGRES_PASSWORD: password
     networks:
       - "milog-network"
   milog-phpfpm:
@@ -20,10 +21,17 @@ services:
     image: milog-php-fpm:8.5
     container_name: "milog-phpfpm"
     depends_on:
-      - milog-mysql
+      - milog-postgres
     volumes:
       - "./:/var/www/"
       - "./docker/config/php-fpm/php.ini:/usr/local/etc/php/php.ini"
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: milog-postgres
+      DB_PORT: 5432
+      DB_DATABASE: milog
+      DB_USERNAME: milog
+      DB_PASSWORD: password
     restart: always
     networks:
       - milog-network

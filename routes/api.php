@@ -23,3 +23,8 @@ Route::group(['middleware' => 'auth:api'], function() {
     Route::apiResource('sites', 'SiteController');
     Route::apiResource('pages', 'PageController');
 });
+
+Route::prefix('v1')->middleware('milog.api_key')->group(function () {
+    Route::post('events', 'Api\V1\EventController@store');
+    Route::get('timeline', 'Api\V1\TimelineController@index');
+});

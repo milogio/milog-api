@@ -1,0 +1,461 @@
+openapi: 3.1.0
+info:
+  title: MiLog Public API
+  version: 1.0.0
+  summary: Public API for ingesting and reading tenant-scoped timeline events.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+  description: |
+    This document describes the implemented public MiLog API surface under `/api/v1`.
+
+    Private API documentation is intentionally deferred for now. A future private
+    spec should cover `/oauth/token` and the implemented Passport-protected `/api`
+    endpoints separately.
+servers:
+  - url: http://localhost:8980
+    description: Local Docker development server
+tags:
+  - name: Events
+    description: Append-only event ingestion
+  - name: Timeline
+    description: Tenant-scoped timeline reads
+security:
+  - ApiKeyAuth: []
+paths:
+  /api/v1/events:
+    post:
+      tags:
+        - Events
+      summary: Store a timeline event
+      description: |
+        Creates a new append-only event for the tenant resolved from the `X-API-Key`
+        request header.
+      operationId: createTimelineEvent
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTimelineEventRequest'
+            examples:
+              basic:
+                summary: Basic event payload
+                value:
+                  actor_type: user
+                  actor_id: "42"
+                  action: created
+                  target_type: invoice
+                  target_id: inv_1
+                  log_level: error
+                  metadata:
+                    source: billing
+                  occurred_at: "2026-05-01T22:00:00Z"
+      responses:
+        '201':
+          description: Event created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimelineEvent'
+              examples:
+                created:
+                  value:
+                    id: 019de5b9-705b-72dc-89cf-35a134013e89
+                    tenant_id: 019de5b9-6f00-7cec-b7ca-fbcc18d61234
+                    actor_type: user
+                    actor_id: "42"
+                    action: created
+                    target_type: invoice
+                    target_id: inv_1
+                    log_level: error
+                    metadata:
+                      source: billing
+                    occurred_at: "2026-05-01T22:00:00Z"
+                    created_at: "2026-05-01T22:00:00Z"
+                    message: user 42 created invoice inv_1
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedError'
+              examples:
+                invalidApiKey:
+                  value:
+                    message: Invalid API key.
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              examples:
+                missingFields:
+                  value:
+                    message: The given data was invalid.
+                    errors:
+                      actor_type:
+                        - The actor type field is required.
+                      actor_id:
+                        - The actor id field is required.
+                      action:
+                        - The action field is required.
+                      target_type:
+                        - The target type field is required.
+                      target_id:
+                        - The target id field is required.
+  /api/v1/timeline:
+    get:
+      tags:
+        - Timeline
+      summary: List timeline events
+      description: |
+        Returns paginated timeline events for the tenant resolved from the
+        `X-API-Key` header. Results are ordered by `occurred_at` descending,
+        then `created_at` descending.
+      operationId: listTimelineEvents
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: target_id
+          in: query
+          required: false
+          description: Filter events by target identifier.
+          schema:
+            type: string
+            maxLength: 255
+        - name: actor_id
+          in: query
+          required: false
+          description: Filter events by actor identifier.
+          schema:
+            type: string
+            maxLength: 255
+        - name: type
+          in: query
+          required: false
+          description: Filter events where `actor_type` or `target_type` matches this value.
+          schema:
+            type: string
+            maxLength: 255
+        - name: page
+          in: query
+          required: false
+          description: Page number for paginated results.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Paginated timeline events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimelineEventCollection'
+              examples:
+                paginated:
+                  value:
+                    data:
+                      - id: 019de5b9-705b-72dc-89cf-35a134013e89
+                        tenant_id: 019de5b9-6f00-7cec-b7ca-fbcc18d61234
+                        actor_type: system
+                        actor_id: actor-2
+                        action: created
+                        target_type: user
+                        target_id: target-1
+                        log_level: info
+                        metadata: {}
+                        occurred_at: "2026-05-01T22:01:00Z"
+                        created_at: "2026-05-01T22:01:00Z"
+                        message: system actor-2 created user target-1
+                      - id: 019de5b9-704f-7b40-8445-5f4ce93f0123
+                        tenant_id: 019de5b9-6f00-7cec-b7ca-fbcc18d61234
+                        actor_type: user
+                        actor_id: actor-1
+                        action: updated
+                        target_type: invoice
+                        target_id: target-1
+                        log_level: warn
+                        metadata:
+                          type: billing
+                        occurred_at: "2026-05-01T22:00:00Z"
+                        created_at: "2026-05-01T22:00:00Z"
+                        message: user actor-1 updated invoice target-1
+                    links:
+                      first: http://localhost:8980/api/v1/timeline?page=1
+                      last: http://localhost:8980/api/v1/timeline?page=1
+                      prev: null
+                      next: null
+                    meta:
+                      current_page: 1
+                      from: 1
+                      last_page: 1
+                      links:
+                        - url: null
+                          label: "&laquo; Previous"
+                          active: false
+                        - url: http://localhost:8980/api/v1/timeline?page=1
+                          label: "1"
+                          active: true
+                        - url: null
+                          label: "Next &raquo;"
+                          active: false
+                      path: http://localhost:8980/api/v1/timeline
+                      per_page: 50
+                      to: 2
+                      total: 2
+        '401':
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthorizedError'
+              examples:
+                invalidApiKey:
+                  value:
+                    message: Invalid API key.
+        '422':
+          description: Query validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              examples:
+                invalidPage:
+                  value:
+                    message: The given data was invalid.
+                    errors:
+                      page:
+                        - The page must be at least 1.
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Tenant-scoped API key required for all public MiLog API requests.
+  schemas:
+    CreateTimelineEventRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - actor_type
+        - actor_id
+        - action
+        - target_type
+        - target_id
+      properties:
+        actor_type:
+          type: string
+          maxLength: 255
+        actor_id:
+          type: string
+          maxLength: 255
+        action:
+          type: string
+          maxLength: 255
+        target_type:
+          type: string
+          maxLength: 255
+        target_id:
+          type: string
+          maxLength: 255
+        log_level:
+          type: string
+          enum:
+            - trace
+            - debug
+            - info
+            - warn
+            - error
+            - fatal
+          default: info
+        metadata:
+          type: object
+          default: {}
+          additionalProperties: true
+        occurred_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+    TimelineEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - tenant_id
+        - actor_type
+        - actor_id
+        - action
+        - target_type
+        - target_id
+        - log_level
+        - metadata
+        - occurred_at
+        - created_at
+        - message
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        actor_type:
+          type: string
+        actor_id:
+          type: string
+        action:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: string
+        log_level:
+          type:
+            - string
+            - "null"
+          enum:
+            - trace
+            - debug
+            - info
+            - warn
+            - error
+            - fatal
+            - null
+        metadata:
+          type: object
+          additionalProperties: true
+        occurred_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        created_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        message:
+          type: string
+    TimelineEventCollection:
+      type: object
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+        links:
+          $ref: '#/components/schemas/PaginationLinks'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    PaginationLinks:
+      type: object
+      required:
+        - first
+        - last
+        - prev
+        - next
+      properties:
+        first:
+          type:
+            - string
+            - "null"
+          format: uri
+        last:
+          type:
+            - string
+            - "null"
+          format: uri
+        prev:
+          type:
+            - string
+            - "null"
+          format: uri
+        next:
+          type:
+            - string
+            - "null"
+          format: uri
+    PaginationMeta:
+      type: object
+      required:
+        - current_page
+        - from
+        - last_page
+        - links
+        - path
+        - per_page
+        - to
+        - total
+      properties:
+        current_page:
+          type: integer
+        from:
+          type:
+            - integer
+            - "null"
+        last_page:
+          type: integer
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaginationMetaLink'
+        path:
+          type: string
+          format: uri
+        per_page:
+          type: integer
+        to:
+          type:
+            - integer
+            - "null"
+        total:
+          type: integer
+    PaginationMetaLink:
+      type: object
+      required:
+        - url
+        - label
+        - active
+      properties:
+        url:
+          type:
+            - string
+            - "null"
+          format: uri
+        label:
+          type: string
+        active:
+          type: boolean
+    UnauthorizedError:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: Invalid API key.
+    ValidationError:
+      type: object
+      required:
+        - message
+        - errors
+      properties:
+        message:
+          type: string
+          example: The given data was invalid.
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string

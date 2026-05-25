@@ -3,6 +3,7 @@ FROM php:8.5-fpm
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
+        libpq-dev \
         libonig-dev \
         libxml2-dev \
         libzip-dev \
@@ -10,6 +11,7 @@ RUN apt-get update \
     && docker-php-ext-install \
         bcmath \
         mbstring \
+        pdo_pgsql \
         pdo_mysql \
         xml \
         zip \
