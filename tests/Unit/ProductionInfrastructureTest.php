@@ -54,6 +54,8 @@ class ProductionInfrastructureTest extends TestCase
         $this->assertStringContainsString('MILOG_NGINX_IMAGE:?', $compose);
         $this->assertStringContainsString('environment: MILOG_APP_KEY', $compose);
         $this->assertStringContainsString('environment: MILOG_DB_PASSWORD', $compose);
+        $this->assertStringContainsString('environment: MILOG_PASSPORT_PRIVATE_KEY_B64', $compose);
+        $this->assertStringContainsString('environment: MILOG_PASSPORT_PUBLIC_KEY_B64', $compose);
         $this->assertStringContainsString('internal: true', $compose);
         $this->assertStringNotContainsString('./:/var/www', $compose);
         $this->assertStringNotContainsString('3923:5432', $compose);
@@ -63,5 +65,6 @@ class ProductionInfrastructureTest extends TestCase
         $this->assertStringContainsString(".env\n", $dockerIgnore);
         $this->assertStringContainsString("docker/data\n", $dockerIgnore);
         $this->assertStringContainsString("vendor\n", $dockerIgnore);
+        $this->assertStringContainsString("storage/oauth-*.key\n", $dockerIgnore);
     }
 }

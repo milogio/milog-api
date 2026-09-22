@@ -2,8 +2,8 @@
 
 namespace App\Providers;
 
+use DateInterval;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
-use Illuminate\Support\Facades\Gate;
 use Laravel\Passport\Passport;
 
 class AuthServiceProvider extends ServiceProvider
@@ -26,7 +26,9 @@ class AuthServiceProvider extends ServiceProvider
     {
         $this->registerPolicies();
 
-        Passport::enablePasswordGrant();
-        Passport::enableImplicitGrant();
+        Passport::tokensCan([
+            'ui' => 'Access the MiLog UI API for the token-bound tenant.',
+        ]);
+        Passport::tokensExpireIn(new DateInterval('PT'.config('milog.ui_auth.access_token_minutes', 15).'M'));
     }
 }

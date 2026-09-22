@@ -139,11 +139,12 @@ paths:
       summary: List timeline events
       description: |
         Returns paginated timeline events for the tenant resolved from the
-        `X-API-Key` header. Results are ordered by `occurred_at` descending,
-        then `created_at` descending.
+        `X-API-Key` header or a tenant-bound MiLog UI bearer token. Results are
+        ordered by `occurred_at` descending, then `created_at` descending.
       operationId: listTimelineEvents
       security:
         - ApiKeyAuth: []
+        - UiBearerAuth: []
       parameters:
         - name: target_id
           in: query
@@ -249,7 +250,7 @@ paths:
                       to: 2
                       total: 2
         '401':
-          description: Missing or invalid API key
+          description: Missing or invalid API key or UI bearer token
           content:
             application/json:
               schema:
@@ -278,6 +279,11 @@ components:
       in: header
       name: X-API-Key
       description: Tenant-scoped API key required for all public MiLog API requests.
+    UiBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Tenant-bound access token issued by `/api/v1/auth/login`.
   schemas:
     CreateTimelineEventRequest:
       type: object

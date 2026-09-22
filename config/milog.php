@@ -10,6 +10,12 @@ return [
         'per_page' => env('MiLog_TIMELINE_PER_PAGE', 50),
     ],
 
+    'ui_auth' => [
+        'access_token_minutes' => (int) env('MILOG_UI_ACCESS_TOKEN_MINUTES', 15),
+        'refresh_token_days' => (int) env('MILOG_UI_REFRESH_TOKEN_DAYS', 30),
+        'roles' => ['owner', 'admin', 'member'],
+    ],
+
     'frontend' => [
         'enabled' => env('MILOG_FRONTEND_ENABLED', false),
         'disabled_status' => env('MILOG_FRONTEND_DISABLED_STATUS', 404),

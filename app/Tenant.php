@@ -9,13 +9,17 @@ class Tenant extends Model
 {
     use HasUuids;
 
+    protected $attributes = [
+        'status' => 'active',
+    ];
+
     /**
      * The attributes that are mass assignable.
      *
      * @var array
      */
     protected $fillable = [
-        'name',
+        'name', 'status',
     ];
 
     /**
@@ -60,5 +64,13 @@ class Tenant extends Model
     public function events()
     {
         return $this->hasMany(TimelineEvent::class);
+    }
+
+    public function users()
+    {
+        return $this->belongsToMany(User::class)
+            ->using(TenantMembership::class)
+            ->withPivot(['role', 'status'])
+            ->withTimestamps();
     }
 }

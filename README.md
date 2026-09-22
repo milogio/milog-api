@@ -143,6 +143,9 @@ curl "http://localhost:8980/api/v1/timeline?target_id=inv_1&type=user" \
   -H "X-API-Key: YOUR_API_KEY"
 ```
 
+Timeline reads also accept a tenant-bound UI access token using
+`Authorization: Bearer ACCESS_TOKEN`. Event ingestion remains API-key-only.
+
 Supported query parameters:
 
 - `target_id`
@@ -156,6 +159,45 @@ Results are ordered by:
 2. `created_at` descending
 
 The response is paginated using Laravel's paginator JSON structure.
+
+## MiLog UI Authentication
+
+The first-party UI uses tenant-bound access tokens through:
+
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `GET /api/v1/auth/me`
+- `POST /api/v1/auth/logout`
+- `POST /api/v1/auth/logout-all`
+
+Create the Passport personal-access client once per environment:
+
+```bash
+docker compose exec -T milog-phpfpm php artisan passport:client --personal --provider=users --name="MiLog UI"
+```
+
+Production also requires `MILOG_PASSPORT_PRIVATE_KEY_B64` and
+`MILOG_PASSPORT_PUBLIC_KEY_B64`. Set them to the base64-encoded output of the
+environment's Passport signing keys; signing keys are excluded from production
+images.
+
+Grant an existing user access to a tenant:
+
+```bash
+docker compose exec -T milog-phpfpm php artisan milog:grant-tenant user@example.com TENANT_UUID --role=member
+```
+
+For direct PostgreSQL administration, the equivalent idempotent upsert is
+available at [`database/sql/upsert_tenant_user.sql`](database/sql/upsert_tenant_user.sql).
+It accepts `user_email`, `tenant_id`, and `tenant_role` as `psql` variables.
+
+Access tokens are short lived. Refresh tokens rotate on every use, are stored
+only as hashes, and remain bound to their original tenant. Reusing a rotated
+refresh token revokes the entire session family. UI logout does not revoke
+producer `X-API-Key` credentials.
+
+The complete client contract is in
+[`docs/ui-api.oas.yaml`](docs/ui-api.oas.yaml).
 
 ## OpenAPI
 

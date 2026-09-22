@@ -11,13 +11,18 @@ class User extends Authenticatable
 {
     use HasApiTokens, Notifiable;
 
+    protected $attributes = [
+        'status' => 'active',
+        'auth_version' => 1,
+    ];
+
     /**
      * The attributes that are mass assignable.
      *
      * @var array
      */
     protected $fillable = [
-        'name', 'email', 'password',
+        'name', 'email', 'password', 'status', 'auth_version',
     ];
 
     /**
@@ -36,9 +41,32 @@ class User extends Authenticatable
      */
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'auth_version' => 'integer',
     ];
+
+    protected static function booted()
+    {
+        static::updating(function ($user) {
+            if ($user->isDirty('password') && ! $user->isDirty('auth_version')) {
+                $user->auth_version = ((int) $user->getOriginal('auth_version')) + 1;
+            }
+        });
+    }
 
     public function sites() {
         return $this->belongsToMany(Site::class);
+    }
+
+    public function tenants()
+    {
+        return $this->belongsToMany(Tenant::class)
+            ->using(TenantMembership::class)
+            ->withPivot(['role', 'status'])
+            ->withTimestamps();
+    }
+
+    public function revokeUiSessions()
+    {
+        $this->forceFill(['auth_version' => $this->auth_version + 1])->save();
     }
 }

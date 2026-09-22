@@ -13,5 +13,6 @@ storage/framework/sessions/*
 storage/framework/testing/*
 storage/framework/views/*
 storage/logs/*
+storage/oauth-*.key
 tests
 vendor

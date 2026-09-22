@@ -49,9 +49,13 @@ services:
       QUEUE_CONNECTION: redis
       SESSION_DRIVER: redis
       MILOG_FRONTEND_ENABLED: "false"
+      MILOG_UI_ACCESS_TOKEN_MINUTES: "${MILOG_UI_ACCESS_TOKEN_MINUTES:-15}"
+      MILOG_UI_REFRESH_TOKEN_DAYS: "${MILOG_UI_REFRESH_TOKEN_DAYS:-30}"
     secrets:
       - app_key
       - db_password
+      - passport_private_key_b64
+      - passport_public_key_b64
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,3 +100,7 @@ secrets:
     environment: MILOG_APP_KEY
   db_password:
     environment: MILOG_DB_PASSWORD
+  passport_private_key_b64:
+    environment: MILOG_PASSPORT_PRIVATE_KEY_B64
+  passport_public_key_b64:
+    environment: MILOG_PASSPORT_PUBLIC_KEY_B64

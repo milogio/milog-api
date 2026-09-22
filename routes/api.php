@@ -26,5 +26,17 @@ Route::group(['middleware' => 'auth:api'], function() {
 
 Route::prefix('v1')->middleware('milog.api_key')->group(function () {
     Route::post('events', 'Api\V1\EventController@store');
-    Route::get('timeline', 'Api\V1\TimelineController@index');
+});
+
+Route::get('v1/timeline', 'Api\V1\TimelineController@index')->middleware('milog.timeline_tenant');
+
+Route::prefix('v1/auth')->group(function () {
+    Route::post('login', 'Api\V1\AuthController@login')->middleware('throttle:milog-ui-login');
+    Route::post('refresh', 'Api\V1\AuthController@refresh')->middleware('throttle:milog-ui-refresh');
+
+    Route::middleware(['auth:api', 'milog.ui_tenant'])->group(function () {
+        Route::get('me', 'Api\V1\AuthController@me');
+        Route::post('logout', 'Api\V1\AuthController@logout');
+        Route::post('logout-all', 'Api\V1\AuthController@logoutAll');
+    });
 });
