@@ -23,8 +23,14 @@ class EventController extends Controller
             $request->validated()
         );
 
-        return (new TimelineEventResource($event))
-            ->response()
-            ->setStatusCode(201);
+        $response = (new TimelineEventResource($event))->response();
+
+        if (! $event->wasRecentlyCreated) {
+            $response->headers->set('Idempotency-Replayed', 'true');
+
+            return $response->setStatusCode(200);
+        }
+
+        return $response->setStatusCode(201);
     }
 }

@@ -20,7 +20,7 @@ class TimelineController extends Controller
         $tenant = $request->attributes->get('milogTenant');
         $filters = $request->validated();
 
-        $events = TimelineEvent::query()
+        $query = TimelineEvent::query()
             ->where('tenant_id', $tenant->id)
             ->when(isset($filters['target_id']), function ($query) use ($filters) {
                 $query->where('target_id', $filters['target_id']);
@@ -36,8 +36,15 @@ class TimelineController extends Controller
             })
             ->orderByDesc('occurred_at')
             ->orderByDesc('created_at')
-            ->paginate((int) config('milog.timeline.per_page', 50))
-            ->appends($request->query());
+            ->orderByDesc('id');
+
+        $perPage = (int) config('milog.timeline.per_page', 50);
+        $useCursor = ($filters['pagination'] ?? null) === 'cursor'
+            || isset($filters['cursor']);
+
+        $events = $useCursor
+            ? $query->cursorPaginate($perPage)->appends($request->query())
+            : $query->paginate($perPage)->appends($request->query());
 
         return TimelineEventResource::collection($events);
     }

@@ -6,6 +6,7 @@ use App\ApiKey;
 use App\Tenant;
 use App\TimelineEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class MiLogApiTest extends TestCase
@@ -104,6 +105,84 @@ class MiLogApiTest extends TestCase
             'target_id' => 'inv_2',
             'log_level' => 'info',
         ]);
+    }
+
+    /**
+     * Test identical idempotent requests return the originally created event.
+     *
+     * @return void
+     */
+    public function testEventCreationIsIdempotentWithinTenant()
+    {
+        [$tenant, $rawKey] = $this->makeTenantWithApiKey();
+        $payload = [
+            'actor_type' => 'user',
+            'actor_id' => '42',
+            'action' => 'created',
+            'target_type' => 'invoice',
+            'target_id' => 'inv-idempotent',
+            'metadata' => ['source' => 'billing', 'nested' => ['b' => 2, 'a' => 1]],
+        ];
+
+        $first = $this->withHeaders([
+            'X-API-Key' => $rawKey,
+            'X-Idempotency-Key' => 'event-123',
+        ])->postJson('/api/v1/events', $payload);
+
+        $replayPayload = $payload;
+        $replayPayload['metadata'] = ['nested' => ['a' => 1, 'b' => 2], 'source' => 'billing'];
+
+        $replay = $this->withHeaders([
+            'X-API-Key' => $rawKey,
+            'X-Idempotency-Key' => 'event-123',
+        ])->postJson('/api/v1/events', $replayPayload);
+
+        $first->assertCreated();
+        $replay->assertOk()
+            ->assertHeader('Idempotency-Replayed', 'true')
+            ->assertJsonPath('id', $first->json('id'));
+
+        $this->assertDatabaseCount('events', 1);
+        $this->assertDatabaseHas('events', [
+            'tenant_id' => $tenant->id,
+            'idempotency_key' => 'event-123',
+        ]);
+    }
+
+    /**
+     * Test an idempotency key cannot be reused with a different payload.
+     *
+     * @return void
+     */
+    public function testEventCreationRejectsConflictingIdempotencyKeyReuse()
+    {
+        [, $rawKey] = $this->makeTenantWithApiKey();
+        $payload = [
+            'actor_type' => 'user',
+            'actor_id' => '42',
+            'action' => 'created',
+            'target_type' => 'invoice',
+            'target_id' => 'inv-original',
+        ];
+
+        $this->withHeaders([
+            'X-API-Key' => $rawKey,
+            'X-Idempotency-Key' => 'event-456',
+        ])->postJson('/api/v1/events', $payload)->assertCreated();
+
+        $payload['target_id'] = 'inv-conflict';
+
+        $this->withHeaders([
+            'X-API-Key' => $rawKey,
+            'X-Idempotency-Key' => 'event-456',
+        ])->postJson('/api/v1/events', $payload)
+            ->assertStatus(409)
+            ->assertJsonPath(
+                'message',
+                'The idempotency key was already used with a different request.'
+            );
+
+        $this->assertDatabaseCount('events', 1);
     }
 
     /**
@@ -225,6 +304,127 @@ class MiLogApiTest extends TestCase
             ->assertJsonPath('data.0.log_level', 'info')
             ->assertJsonPath('data.1.id', $matchingByActor->id)
             ->assertJsonPath('data.1.log_level', 'warn');
+    }
+
+    /**
+     * Test timeline ordering is deterministic when timestamps match.
+     *
+     * @return void
+     */
+    public function testTimelineUsesIdAsStableOrderingTieBreaker()
+    {
+        [$tenant, $rawKey] = $this->makeTenantWithApiKey();
+        $timestamp = now()->startOfSecond();
+
+        foreach ([
+            '00000000-0000-7000-8000-000000000001',
+            '00000000-0000-7000-8000-000000000002',
+        ] as $id) {
+            DB::table('events')->insert([
+                'id' => $id,
+                'tenant_id' => $tenant->id,
+                'actor_type' => 'user',
+                'actor_id' => 'actor-1',
+                'action' => 'updated',
+                'target_type' => 'invoice',
+                'target_id' => 'invoice-1',
+                'log_level' => 'info',
+                'metadata' => json_encode([]),
+                'occurred_at' => $timestamp,
+                'created_at' => $timestamp,
+            ]);
+        }
+
+        $response = $this->withHeader('X-API-Key', $rawKey)
+            ->getJson('/api/v1/timeline');
+
+        $response->assertOk()
+            ->assertJsonPath('data.0.id', '00000000-0000-7000-8000-000000000002')
+            ->assertJsonPath('data.1.id', '00000000-0000-7000-8000-000000000001');
+    }
+
+    /**
+     * Test PostgreSQL has indexes matching timeline filtering and ordering.
+     *
+     * @return void
+     */
+    public function testTimelineIndexesMatchQueryShape()
+    {
+        $indexes = collect(DB::select(
+            "select indexname, indexdef from pg_indexes where schemaname = current_schema() and tablename = 'events'"
+        ))->keyBy('indexname');
+
+        $expectedIndexes = [
+            'events_timeline_index' => '(tenant_id, occurred_at DESC, created_at DESC, id DESC)',
+            'events_target_timeline_index' => '(tenant_id, target_id, occurred_at DESC, created_at DESC, id DESC)',
+            'events_actor_timeline_index' => '(tenant_id, actor_id, occurred_at DESC, created_at DESC, id DESC)',
+            'events_actor_type_timeline_index' => '(tenant_id, actor_type, occurred_at DESC, created_at DESC, id DESC)',
+            'events_target_type_timeline_index' => '(tenant_id, target_type, occurred_at DESC, created_at DESC, id DESC)',
+        ];
+
+        foreach ($expectedIndexes as $name => $columns) {
+            $this->assertTrue($indexes->has($name), "Missing timeline index {$name}.");
+            $this->assertStringContainsString($columns, $indexes->get($name)->indexdef);
+        }
+    }
+
+    /**
+     * Test cursor pagination produces stable, non-overlapping timeline pages.
+     *
+     * @return void
+     */
+    public function testTimelineSupportsCursorPaginationWithoutChangingOffsetDefault()
+    {
+        config(['milog.timeline.per_page' => 2]);
+        [$tenant, $rawKey] = $this->makeTenantWithApiKey();
+        $timestamp = now()->startOfSecond();
+
+        foreach ([
+            '00000000-0000-7000-8000-000000000001',
+            '00000000-0000-7000-8000-000000000002',
+            '00000000-0000-7000-8000-000000000003',
+        ] as $id) {
+            DB::table('events')->insert([
+                'id' => $id,
+                'tenant_id' => $tenant->id,
+                'actor_type' => 'user',
+                'actor_id' => 'actor-1',
+                'action' => 'updated',
+                'target_type' => 'invoice',
+                'target_id' => 'invoice-1',
+                'log_level' => 'info',
+                'metadata' => json_encode([]),
+                'occurred_at' => $timestamp,
+                'created_at' => $timestamp,
+            ]);
+        }
+
+        $offsetResponse = $this->withHeader('X-API-Key', $rawKey)
+            ->getJson('/api/v1/timeline');
+
+        $offsetResponse->assertOk()
+            ->assertJsonPath('meta.current_page', 1);
+
+        $firstPage = $this->withHeader('X-API-Key', $rawKey)
+            ->getJson('/api/v1/timeline?pagination=cursor');
+
+        $firstPage->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.id', '00000000-0000-7000-8000-000000000003')
+            ->assertJsonPath('data.1.id', '00000000-0000-7000-8000-000000000002')
+            ->assertJsonMissingPath('meta.current_page');
+
+        $nextUrl = $firstPage->json('links.next');
+        $this->assertNotNull($nextUrl);
+
+        $secondPage = $this->withHeader('X-API-Key', $rawKey)
+            ->getJson($nextUrl);
+
+        $secondPage->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', '00000000-0000-7000-8000-000000000001');
+
+        $this->assertNotNull($secondPage->json('links.prev'));
     }
 
     /**

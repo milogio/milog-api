@@ -53,6 +53,14 @@ paths:
                   metadata:
                     source: billing
                   occurred_at: "2026-05-01T22:00:00Z"
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: false
+          description: A tenant-scoped key that makes retries return the originally created event.
+          schema:
+            type: string
+            maxLength: 255
       responses:
         '201':
           description: Event created
@@ -76,6 +84,23 @@ paths:
                     occurred_at: "2026-05-01T22:00:00Z"
                     created_at: "2026-05-01T22:00:00Z"
                     message: user 42 created invoice inv_1
+        '200':
+          description: "An identical idempotent request was replayed. The response includes `Idempotency-Replayed: true`."
+          headers:
+            Idempotency-Replayed:
+              schema:
+                type: string
+                const: "true"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimelineEvent'
+        '409':
+          description: The idempotency key was previously used with a different payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictError'
         '401':
           description: Missing or invalid API key
           content:
@@ -148,6 +173,22 @@ paths:
           schema:
             type: integer
             minimum: 1
+        - name: pagination
+          in: query
+          required: false
+          description: Use `cursor` for stable cursor pagination. Defaults to `offset` for backward compatibility.
+          schema:
+            type: string
+            enum:
+              - offset
+              - cursor
+            default: offset
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque cursor returned in a cursor-paginated response link.
+          schema:
+            type: string
       responses:
         '200':
           description: Paginated timeline events
@@ -444,6 +485,14 @@ components:
         message:
           type: string
           example: Invalid API key.
+    ConflictError:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: The idempotency key was already used with a different request.
     ValidationError:
       type: object
       required:

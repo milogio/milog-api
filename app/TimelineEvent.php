@@ -53,6 +53,8 @@ class TimelineEvent extends Model
         'metadata',
         'occurred_at',
         'created_at',
+        'idempotency_key',
+        'request_hash',
     ];
 
     /**

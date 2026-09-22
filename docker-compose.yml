@@ -1,6 +1,6 @@
 services:
   milog-postgres:
-    image: postgres:17-alpine
+    image: postgres:17.9-alpine
     container_name: "milog-postgres"
     volumes:
       - "./docker/data/postgres:/var/lib/postgresql/data"
@@ -11,7 +11,12 @@ services:
     environment:
       POSTGRES_DB: milog
       POSTGRES_USER: milog
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: "${MILOG_DB_PASSWORD:-password}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U milog -d milog"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - "milog-network"
   milog-phpfpm:
@@ -21,7 +26,8 @@ services:
     image: milog-php-fpm:8.5
     container_name: "milog-phpfpm"
     depends_on:
-      - milog-postgres
+      milog-postgres:
+        condition: service_healthy
     volumes:
       - "./:/var/www/"
       - "./docker/config/php-fpm/php.ini:/usr/local/etc/php/php.ini"
@@ -31,15 +37,22 @@ services:
       DB_PORT: 5432
       DB_DATABASE: milog
       DB_USERNAME: milog
-      DB_PASSWORD: password
+      DB_PASSWORD: "${MILOG_DB_PASSWORD:-password}"
+      REDIS_HOST: milog-redis
+    healthcheck:
+      test: ["CMD", "php-fpm", "-t"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: always
     networks:
       - milog-network
   milog-nginx:
-    image: nginx:1.17-alpine
+    image: nginx:1.30.0-alpine
     container_name: "milog-nginx"
     depends_on:
-      - milog-phpfpm
+      milog-phpfpm:
+        condition: service_healthy
     ports:
       - "8980:80"
       - "8943:443"
@@ -52,14 +65,17 @@ services:
     networks:
       - "milog-network"
   milog-redis:
-    image: redis:5.0.6-alpine
+    image: redis:8.2.9-alpine
     container_name: "milog-redis"
-    depends_on:
-      - "milog-phpfpm"
     volumes:
       - "./docker/data/redis:/data"
       - "./docker/config/redis.conf:/usr/local/etc/redis/redis.conf"
     restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     networks:
       - "milog-network"
 networks:

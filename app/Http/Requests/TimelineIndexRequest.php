@@ -28,6 +28,8 @@ class TimelineIndexRequest extends FormRequest
             'actor_id' => ['nullable', 'string', 'max:255'],
             'type' => ['nullable', 'string', 'max:255'],
             'page' => ['nullable', 'integer', 'min:1'],
+            'pagination' => ['nullable', 'string', 'in:offset,cursor'],
+            'cursor' => ['nullable', 'string'],
         ];
     }
 }

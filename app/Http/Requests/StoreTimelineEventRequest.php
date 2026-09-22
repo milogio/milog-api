@@ -7,6 +7,18 @@ use Illuminate\Foundation\Http\FormRequest;
 class StoreTimelineEventRequest extends FormRequest
 {
     /**
+     * Add the idempotency header to validated input.
+     *
+     * @return void
+     */
+    protected function prepareForValidation()
+    {
+        $this->merge([
+            'idempotency_key' => $this->header('X-Idempotency-Key'),
+        ]);
+    }
+
+    /**
      * Determine if the user is authorized to make this request.
      *
      * @return bool
@@ -32,6 +44,7 @@ class StoreTimelineEventRequest extends FormRequest
             'log_level' => ['nullable', 'string', 'in:trace,debug,info,warn,error,fatal'],
             'metadata' => ['nullable', 'array'],
             'occurred_at' => ['nullable', 'date'],
+            'idempotency_key' => ['nullable', 'string', 'max:255'],
         ];
     }
 }

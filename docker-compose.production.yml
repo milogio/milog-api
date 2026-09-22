@@ -1,0 +1,98 @@
+services:
+  postgres:
+    image: postgres:17.9-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: milog
+      POSTGRES_USER: milog
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U milog -d milog"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  redis:
+    image: redis:8.2.9-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      - backend
+
+  api:
+    image: "${MILOG_PHP_IMAGE:?Set MILOG_PHP_IMAGE to an immutable production image}"
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      LOG_CHANNEL: stderr
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: milog
+      DB_USERNAME: milog
+      REDIS_HOST: redis
+      CACHE_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DRIVER: redis
+      MILOG_FRONTEND_ENABLED: "false"
+    secrets:
+      - app_key
+      - db_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php-fpm", "-t"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  nginx:
+    image: "${MILOG_NGINX_IMAGE:?Set MILOG_NGINX_IMAGE to an immutable production image}"
+    restart: unless-stopped
+    ports:
+      - "${MILOG_HTTP_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge
+      - backend
+
+volumes:
+  postgres-data:
+  redis-data:
+
+networks:
+  edge:
+  backend:
+    internal: true
+
+secrets:
+  app_key:
+    environment: MILOG_APP_KEY
+  db_password:
+    environment: MILOG_DB_PASSWORD
