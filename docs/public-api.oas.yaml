@@ -140,7 +140,10 @@ paths:
       description: |
         Returns paginated timeline events for the tenant resolved from the
         `X-API-Key` header or a tenant-bound MiLog UI bearer token. Results are
-        ordered by `occurred_at` descending, then `created_at` descending.
+        ordered by `occurred_at` descending, then `created_at` descending, then
+        `id` descending. Event ingestion continues to accept raw canonical log
+        levels (`trace`, `debug`, `info`, `warn`, `error`, and `fatal`), while
+        this timeline filter accepts viewer-facing normalized levels.
       operationId: listTimelineEvents
       security:
         - ApiKeyAuth: []
@@ -167,6 +170,29 @@ paths:
           schema:
             type: string
             maxLength: 255
+        - name: log_level
+          in: query
+          required: false
+          description: |
+            Comma-separated viewer-facing levels. Whitespace is trimmed and
+            repeated values are deduplicated. Allowed values are `debug`,
+            `info`, `success`, `warning`, and `error`, with at most five
+            distinct values. An unknown value or empty list item returns `422`.
+
+            Selected levels have OR semantics. This filter has AND semantics
+            with `target_id`, `actor_id`, and `type`. Mappings are: `debug`
+            matches `trace` and `debug`; `info` matches `info`, `NULL`, and
+            unrecognized legacy stored values; `success` matches legacy
+            `success`; `warning` matches `warn` and legacy `warning`; and
+            `error` matches `error` and `fatal`. Pagination links retain the
+            complete supplied parameter.
+          schema:
+            type: string
+            example: warning,error
+          examples:
+            errors:
+              summary: Warning and error display levels
+              value: warning,error
         - name: page
           in: query
           required: false

@@ -230,6 +230,34 @@ class UiAuthenticationTest extends TestCase
             ->assertJsonPath('data.0.target_id', 'owned');
     }
 
+    public function testUiTokenLogLevelFilterRemainsTenantScoped()
+    {
+        [$user, $tenant] = $this->makeMember();
+        $otherTenant = Tenant::create(['name' => 'Other tenant']);
+        $login = $this->login($user, $tenant);
+
+        foreach ([$tenant, $otherTenant] as $eventTenant) {
+            TimelineEvent::create([
+                'tenant_id' => $eventTenant->id,
+                'actor_type' => 'user',
+                'actor_id' => '1',
+                'action' => 'failed',
+                'target_type' => 'session',
+                'target_id' => 'session-1',
+                'log_level' => 'fatal',
+                'metadata' => [],
+                'occurred_at' => now(),
+            ]);
+        }
+
+        $this->withToken($login->json('access_token'))
+            ->getJson('/api/v1/timeline?log_level=error')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.tenant_id', $tenant->id)
+            ->assertJsonPath('data.0.log_level', 'fatal');
+    }
+
     protected function makeMember()
     {
         $user = User::create([

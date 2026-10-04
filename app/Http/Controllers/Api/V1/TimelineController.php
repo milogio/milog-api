@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\TimelineIndexRequest;
 use App\Http\Resources\TimelineEventResource;
+use App\Support\TimelineLogLevelFilter;
 use App\TimelineEvent;
 
 class TimelineController extends Controller
@@ -32,6 +33,19 @@ class TimelineController extends Controller
                 $query->where(function ($query) use ($filters) {
                     $query->where('actor_type', $filters['type'])
                         ->orWhere('target_type', $filters['type']);
+                });
+            })
+            ->when(isset($filters['log_level']), function ($query) use ($filters) {
+                $levels = TimelineLogLevelFilter::parse($filters['log_level']);
+                $rawValues = TimelineLogLevelFilter::rawValues($levels);
+
+                $query->where(function ($query) use ($levels, $rawValues) {
+                    $query->whereIn('log_level', $rawValues);
+
+                    if (in_array('info', $levels, true)) {
+                        $query->orWhereNull('log_level')
+                            ->orWhereNotIn('log_level', TimelineLogLevelFilter::recognizedRawValues());
+                    }
                 });
             })
             ->orderByDesc('occurred_at')

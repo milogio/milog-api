@@ -306,6 +306,113 @@ class MiLogApiTest extends TestCase
             ->assertJsonPath('data.1.log_level', 'warn');
     }
 
+    public function testTimelineFiltersViewerLevelsAndLegacyStoredValues()
+    {
+        [$tenant, $rawKey] = $this->makeTenantWithApiKey();
+
+        DB::statement('alter table events drop constraint if exists events_log_level_check');
+
+        foreach (['trace', 'debug', 'info', null, 'success', 'warn', 'warning', 'error', 'fatal', 'notice'] as $index => $level) {
+            DB::table('events')->insert([
+                'id' => sprintf('00000000-0000-7000-8000-%012d', $index + 1),
+                'tenant_id' => $tenant->id,
+                'actor_type' => 'user',
+                'actor_id' => 'actor-1',
+                'action' => 'updated',
+                'target_type' => 'invoice',
+                'target_id' => 'invoice-1',
+                'log_level' => $level,
+                'metadata' => json_encode([]),
+                'occurred_at' => now()->subSeconds($index),
+                'created_at' => now()->subSeconds($index),
+            ]);
+        }
+
+        $expectations = [
+            'debug' => ['trace', 'debug'],
+            'info' => ['info', null, 'notice'],
+            'success' => ['success'],
+            'warning' => ['warn', 'warning'],
+            'error' => ['error', 'fatal'],
+            'debug,error' => ['trace', 'debug', 'error', 'fatal'],
+        ];
+
+        foreach ($expectations as $filter => $expected) {
+            $response = $this->withHeader('X-API-Key', $rawKey)
+                ->getJson('/api/v1/timeline?log_level='.urlencode($filter));
+
+            $response->assertOk();
+            $this->assertEqualsCanonicalizing($expected, collect($response->json('data'))->pluck('log_level')->all());
+        }
+    }
+
+    public function testTimelineLogLevelFilterIsValidatedTrimmedAndDeduplicated()
+    {
+        [$tenant, $rawKey] = $this->makeTenantWithApiKey();
+
+        TimelineEvent::create([
+            'tenant_id' => $tenant->id,
+            'actor_type' => 'user',
+            'actor_id' => 'actor-1',
+            'action' => 'updated',
+            'target_type' => 'invoice',
+            'target_id' => 'invoice-1',
+            'log_level' => 'warn',
+            'metadata' => [],
+            'occurred_at' => now(),
+        ]);
+
+        $this->withHeader('X-API-Key', $rawKey)
+            ->getJson('/api/v1/timeline?log_level='.urlencode(' warning,warning '))
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+
+        foreach (['', 'unknown', 'warning,,error', 'debug,info,success,warning,error,unknown'] as $invalid) {
+            $this->withHeader('X-API-Key', $rawKey)
+                ->getJson('/api/v1/timeline?log_level='.urlencode($invalid))
+                ->assertStatus(422)
+                ->assertJsonValidationErrors('log_level');
+        }
+    }
+
+    public function testTimelineLogLevelCombinesWithOtherFiltersAndApiKeyTenantScope()
+    {
+        [$tenant, $rawKey] = $this->makeTenantWithApiKey();
+        [$otherTenant] = $this->makeTenantWithApiKey('Other Tenant');
+
+        foreach ([$tenant, $otherTenant] as $eventTenant) {
+            TimelineEvent::create([
+                'tenant_id' => $eventTenant->id,
+                'actor_type' => 'user',
+                'actor_id' => 'actor-1',
+                'action' => 'updated',
+                'target_type' => 'invoice',
+                'target_id' => 'invoice-1',
+                'log_level' => 'fatal',
+                'metadata' => [],
+                'occurred_at' => now(),
+            ]);
+        }
+
+        TimelineEvent::create([
+            'tenant_id' => $tenant->id,
+            'actor_type' => 'user',
+            'actor_id' => 'actor-2',
+            'action' => 'updated',
+            'target_type' => 'invoice',
+            'target_id' => 'invoice-1',
+            'log_level' => 'fatal',
+            'metadata' => [],
+            'occurred_at' => now(),
+        ]);
+
+        $this->withHeader('X-API-Key', $rawKey)
+            ->getJson('/api/v1/timeline?log_level=error&actor_id=actor-1&target_id=invoice-1&type=invoice')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.tenant_id', $tenant->id);
+    }
+
     /**
      * Test timeline ordering is deterministic when timestamps match.
      *
@@ -425,6 +532,53 @@ class MiLogApiTest extends TestCase
             ->assertJsonPath('data.0.id', '00000000-0000-7000-8000-000000000001');
 
         $this->assertNotNull($secondPage->json('links.prev'));
+    }
+
+    public function testFilteredCursorPaginationIsStableAcrossThreePagesAndRetainsFilter()
+    {
+        config(['milog.timeline.per_page' => 2]);
+        [$tenant, $rawKey] = $this->makeTenantWithApiKey();
+        $timestamp = now()->startOfSecond();
+
+        foreach (range(1, 7) as $number) {
+            DB::table('events')->insert([
+                'id' => sprintf('00000000-0000-7000-8000-%012d', $number),
+                'tenant_id' => $tenant->id,
+                'actor_type' => 'user',
+                'actor_id' => 'actor-1',
+                'action' => 'updated',
+                'target_type' => 'invoice',
+                'target_id' => 'invoice-1',
+                'log_level' => $number === 4 ? 'info' : ($number % 2 ? 'error' : 'fatal'),
+                'metadata' => json_encode([]),
+                'occurred_at' => $timestamp,
+                'created_at' => $timestamp,
+            ]);
+        }
+
+        $url = '/api/v1/timeline?pagination=cursor&log_level=error';
+        $ids = [];
+
+        for ($page = 0; $page < 3; $page++) {
+            $response = $this->withHeader('X-API-Key', $rawKey)->getJson($url)->assertOk();
+            $ids = array_merge($ids, collect($response->json('data'))->pluck('id')->all());
+            $url = $response->json('links.next');
+
+            if ($page < 2) {
+                $this->assertNotNull($url);
+                $this->assertStringContainsString('log_level=error', $url);
+            }
+        }
+
+        $this->assertSame([
+            '00000000-0000-7000-8000-000000000007',
+            '00000000-0000-7000-8000-000000000006',
+            '00000000-0000-7000-8000-000000000005',
+            '00000000-0000-7000-8000-000000000003',
+            '00000000-0000-7000-8000-000000000002',
+            '00000000-0000-7000-8000-000000000001',
+        ], $ids);
+        $this->assertCount(count(array_unique($ids)), $ids);
     }
 
     /**
