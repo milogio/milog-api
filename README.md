@@ -67,7 +67,7 @@ http://localhost:8980
 Create a tenant and issue a public API key:
 
 ```bash
-docker compose exec -T milog-phpfpm php artisan milog:provision-tenant "Acme"
+docker compose exec -T milog-phpfpm php artisan milog:provision-tenant "Acme" --legacy-override
 ```
 
 The command prints:
@@ -78,6 +78,9 @@ The command prints:
 - the raw API key
 
 Store the raw API key when it is shown. It is not persisted in plaintext.
+This command is an administrative override for existing integrations. New
+accounts should use the UI signup and credential flow described in
+[docs/milog-ui-handover.md](docs/milog-ui-handover.md).
 
 ## Public API
 

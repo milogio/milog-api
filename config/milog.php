@@ -4,6 +4,15 @@ return [
     'api_keys' => [
         'header' => 'X-API-Key',
         'prefix_length' => 12,
+        'temporary_lifetime_days' => (int) env('MILOG_TEMPORARY_KEY_DAYS', 7),
+        'temporary_issuance_limit' => (int) env('MILOG_TEMPORARY_KEY_LIMIT', 2),
+        'paid_active_limit' => (int) env('MILOG_PAID_KEY_LIMIT', 5),
+    ],
+
+    'signup' => [
+        'ui_url' => env('MILOG_UI_URL', 'http://localhost:3000'),
+        'verification_hours' => (int) env('MILOG_SIGNUP_VERIFICATION_HOURS', 24),
+        'trial_days' => (int) env('MILOG_TRIAL_DAYS', 14),
     ],
 
     'timeline' => [

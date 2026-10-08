@@ -1,14 +1,200 @@
 openapi: 3.1.0
 info:
-  title: MiLog UI Authentication API
-  version: 1.0.0
+  title: MiLog UI Account API
+  version: 1.1.0
   license:
     name: Proprietary
     identifier: LicenseRef-Proprietary
-  description: First-party, tenant-bound authentication contract for milog-ui.
+  description: First-party signup, tenant-bound authentication, entitlement, and API-key contract for milog-ui.
 servers:
   - url: /api/v1
 paths:
+  /signup:
+    post:
+      operationId: signup
+      summary: Create a pending owner and tenant and send verification email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, tenant_name, email, password, password_confirmation, terms_accepted]
+              properties:
+                name:
+                  type: string
+                tenant_name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                  minLength: 12
+                password_confirmation:
+                  type: string
+                  format: password
+                terms_accepted:
+                  type: boolean
+                  const: true
+      responses:
+        '202':
+          description: Generic response, including for an existing email
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /signup/resend:
+    post:
+      operationId: resendSignupVerification
+      summary: Resend verification email when the account is still pending
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '202':
+          description: Generic response, including for an unknown or active email
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /signup/verify:
+    post:
+      operationId: verifySignup
+      summary: Verify a pending owner and activate the tenant evaluation
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Verified; the owner may now log in
+        '422':
+          description: Invalid, expired, or already used token, or invalid request
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /entitlement:
+    get:
+      operationId: getEntitlement
+      summary: Read effective API entitlement for the token-bound tenant
+      responses:
+        '200':
+          description: Current entitlement
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Entitlement'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /api-keys:
+    get:
+      operationId: listApiKeys
+      summary: List key metadata for the token-bound tenant
+      description: Requires owner or admin membership. Raw keys are never returned.
+      responses:
+        '200':
+          description: Key metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKeyMetadata'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: createApiKey
+      summary: Create a tenant API key and return the raw value once
+      description: Requires owner or admin membership and a password step-up.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, kind, password]
+              properties:
+                name:
+                  type: string
+                  maxLength: 100
+                kind:
+                  type: string
+                  enum: [temporary, paid]
+                password:
+                  type: string
+                  format: password
+      responses:
+        '201':
+          description: Created; api_key is shown once
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, api_key]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ApiKeyMetadata'
+                  api_key:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Key limit reached
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api-keys/{key}:
+    delete:
+      operationId: revokeApiKey
+      summary: Revoke one key in the token-bound tenant
+      description: Requires owner or admin membership.
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Revoked
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Key not found in this tenant
   /auth/login:
     post:
       operationId: login
@@ -116,6 +302,57 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    Entitlement:
+      type: object
+      required: [state, trial_ends_at, billing_status, paid_through_at, grace_ends_at, can_create_temporary_key, can_create_paid_key]
+      properties:
+        state:
+          type: string
+          enum: [suspended, paid, grace, paid_through, evaluation, inactive]
+        trial_ends_at:
+          type: [string, 'null']
+          format: date-time
+        billing_status:
+          type: string
+        paid_through_at:
+          type: [string, 'null']
+          format: date-time
+        grace_ends_at:
+          type: [string, 'null']
+          format: date-time
+        can_create_temporary_key:
+          type: boolean
+        can_create_paid_key:
+          type: boolean
+    ApiKeyMetadata:
+      type: object
+      required: [id, name, key_prefix, kind, status, created_at, expires_at, revoked_at, last_used_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        key_prefix:
+          type: string
+        kind:
+          type: string
+          enum: [legacy, temporary, paid]
+        status:
+          type: string
+          enum: [active, revoked]
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+        revoked_at:
+          type: [string, 'null']
+          format: date-time
+        last_used_at:
+          type: [string, 'null']
+          format: date-time
     LoginRequest:
       type: object
       required: [email, password]
@@ -215,6 +452,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Unauthenticated:
       description: Missing, invalid, expired, revoked, or inactive tenant session
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Role or entitlement does not allow the operation
       content:
         application/json:
           schema:

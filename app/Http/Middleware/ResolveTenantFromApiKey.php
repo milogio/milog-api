@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\ApiKey;
+use App\Services\MiLog\ApiEntitlement;
 use Closure;
 use Illuminate\Http\JsonResponse;
 
@@ -28,7 +29,8 @@ class ResolveTenantFromApiKey
             ->where('key_hash', ApiKey::hashKey($rawKey))
             ->first();
 
-        if (! $apiKey || ! $apiKey->tenant) {
+        if (! $apiKey || ! $apiKey->tenant
+            || ! app(ApiEntitlement::class)->canUse($apiKey->tenant, $apiKey)) {
             return $this->unauthorizedResponse();
         }
 

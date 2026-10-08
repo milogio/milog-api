@@ -34,6 +34,12 @@ class ApiKey extends Model
         'key_prefix',
         'key_hash',
         'last_used_at',
+        'kind',
+        'status',
+        'expires_at',
+        'revoked_at',
+        'revoked_reason',
+        'created_by_user_id',
     ];
 
     /**
@@ -45,6 +51,8 @@ class ApiKey extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'last_used_at' => 'datetime',
+        'expires_at' => 'datetime',
+        'revoked_at' => 'datetime',
     ];
 
     /**

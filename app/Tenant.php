@@ -56,6 +56,11 @@ class Tenant extends Model
         return $this->hasMany(ApiKey::class);
     }
 
+    public function entitlement()
+    {
+        return $this->hasOne(TenantEntitlement::class);
+    }
+
     /**
      * Get the events for the tenant.
      *

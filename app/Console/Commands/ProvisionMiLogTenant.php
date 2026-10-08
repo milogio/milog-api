@@ -16,7 +16,8 @@ class ProvisionMiLogTenant extends Command
      */
     protected $signature = 'milog:provision-tenant
                             {name : The tenant name}
-                            {--key-name=Primary : The display name for the API key}';
+                            {--key-name=Primary : The display name for the API key}
+                            {--legacy-override : Explicitly create a legacy key outside self-service validation and billing}';
 
     /**
      * The console command description.
@@ -32,6 +33,12 @@ class ProvisionMiLogTenant extends Command
      */
     public function handle()
     {
+        if (! $this->option('legacy-override')) {
+            $this->error('Use --legacy-override for administrative provisioning outside the self-service flow.');
+
+            return self::INVALID;
+        }
+
         $tenant = Tenant::create([
             'name' => $this->argument('name'),
         ]);
@@ -43,6 +50,7 @@ class ProvisionMiLogTenant extends Command
             'name' => $this->option('key-name'),
             'key_prefix' => ApiKey::keyPrefix($rawKey),
             'key_hash' => ApiKey::hashKey($rawKey),
+            'kind' => 'legacy',
         ]);
 
         $this->info('Tenant created.');

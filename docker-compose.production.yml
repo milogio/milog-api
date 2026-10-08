@@ -51,11 +51,20 @@ services:
       MILOG_FRONTEND_ENABLED: "false"
       MILOG_UI_ACCESS_TOKEN_MINUTES: "${MILOG_UI_ACCESS_TOKEN_MINUTES:-15}"
       MILOG_UI_REFRESH_TOKEN_DAYS: "${MILOG_UI_REFRESH_TOKEN_DAYS:-30}"
+      MILOG_UI_URL: "${MILOG_UI_URL:?Set MILOG_UI_URL to the public MiLog UI origin}"
+      MAIL_MAILER: smtp
+      MAIL_HOST: "${MILOG_MAIL_HOST:?Set MILOG_MAIL_HOST for verification email}"
+      MAIL_PORT: "${MILOG_MAIL_PORT:-587}"
+      MAIL_ENCRYPTION: "${MILOG_MAIL_ENCRYPTION:-tls}"
+      MAIL_USERNAME: "${MILOG_MAIL_USERNAME:?Set MILOG_MAIL_USERNAME}"
+      MAIL_FROM_ADDRESS: "${MILOG_MAIL_FROM_ADDRESS:?Set MILOG_MAIL_FROM_ADDRESS}"
+      MAIL_FROM_NAME: MiLog
     secrets:
       - app_key
       - db_password
       - passport_private_key_b64
       - passport_public_key_b64
+      - mail_password
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,3 +113,5 @@ secrets:
     environment: MILOG_PASSPORT_PRIVATE_KEY_B64
   passport_public_key_b64:
     environment: MILOG_PASSPORT_PUBLIC_KEY_B64
+  mail_password:
+    environment: MILOG_MAIL_PASSWORD

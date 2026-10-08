@@ -22,7 +22,7 @@ class User extends Authenticatable
      * @var array
      */
     protected $fillable = [
-        'name', 'email', 'password', 'status', 'auth_version',
+        'name', 'email', 'password', 'status', 'auth_version', 'terms_accepted_at',
     ];
 
     /**
@@ -42,6 +42,7 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'auth_version' => 'integer',
+        'terms_accepted_at' => 'datetime',
     ];
 
     protected static function booted()

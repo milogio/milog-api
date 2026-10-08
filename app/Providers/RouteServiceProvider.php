@@ -43,6 +43,21 @@ class RouteServiceProvider extends ServiceProvider
             return Limit::perMinute(30)->by($request->ip());
         });
 
+        RateLimiter::for('milog-signup', function (Request $request) {
+            return [
+                Limit::perMinute(10)->by($request->ip()),
+                Limit::perMinute(5)->by($request->ip().'|'.mb_strtolower(trim((string) $request->input('email')))),
+            ];
+        });
+
+        RateLimiter::for('milog-signup-verify', function (Request $request) {
+            return Limit::perMinute(10)->by($request->ip());
+        });
+
+        RateLimiter::for('milog-key-create', function (Request $request) {
+            return Limit::perMinute(5)->by($request->user()->id.'|'.$request->ip());
+        });
+
         parent::boot();
     }
 
