@@ -63,6 +63,19 @@ The API is then available at:
 http://localhost:8980
 ```
 
+Local signup and resend emails are captured by MailHog at
+`http://localhost:8025`. The PHP container sends to `milog-mailhog:1025`;
+Docker Compose sets this connection even if an existing `.env` has older mail
+settings. The inbox uses temporary in-memory storage and clears on restart.
+
+To check delivery, submit a new signup to `POST /api/v1/signup` using the
+example payload in [docs/milog-ui-handover.md](docs/milog-ui-handover.md), then
+open the MailHog inbox and inspect the verification link. Its destination uses
+`MILOG_UI_URL`, which defaults to `http://localhost:3000` in the example env.
+
+If running Laravel directly on the host instead of in Compose, set
+`MAIL_HOST=127.0.0.1` and `MAIL_PORT=1025` in the host process environment.
+
 ## Provision a Tenant API Key
 
 Create a tenant and issue a public API key:

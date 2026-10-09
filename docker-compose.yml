@@ -28,6 +28,8 @@ services:
     depends_on:
       milog-postgres:
         condition: service_healthy
+      milog-mailhog:
+        condition: service_started
     volumes:
       - "./:/var/www/"
       - "./docker/config/php-fpm/php.ini:/usr/local/etc/php/php.ini"
@@ -39,6 +41,14 @@ services:
       DB_USERNAME: milog
       DB_PASSWORD: "${MILOG_DB_PASSWORD:-password}"
       REDIS_HOST: milog-redis
+      MAIL_MAILER: smtp
+      MAIL_HOST: milog-mailhog
+      MAIL_PORT: 1025
+      MAIL_USERNAME: ""
+      MAIL_PASSWORD: ""
+      MAIL_ENCRYPTION: ""
+      MAIL_FROM_ADDRESS: no-reply@milog.test
+      MAIL_FROM_NAME: MiLog
       MILOG_UI_ACCESS_TOKEN_MINUTES: "${MILOG_UI_ACCESS_TOKEN_MINUTES:-15}"
       MILOG_UI_REFRESH_TOKEN_DAYS: "${MILOG_UI_REFRESH_TOKEN_DAYS:-30}"
     healthcheck:
@@ -78,6 +88,16 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - "milog-network"
+  milog-mailhog:
+    image: mailhog/mailhog:v1.0.1
+    platform: linux/amd64
+    container_name: "milog-mailhog"
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    restart: always
     networks:
       - "milog-network"
 networks:
