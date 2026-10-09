@@ -9,9 +9,10 @@ info:
   description: |
     This document describes the implemented public MiLog API surface under `/api/v1`.
 
-    Private API documentation is intentionally deferred for now. A future private
-    spec should cover `/oauth/token` and the implemented Passport-protected `/api`
-    endpoints separately.
+    The API middleware limits requests to 60 per minute. Responses include
+    `X-RateLimit-Limit` and `X-RateLimit-Remaining`; a `429` response also
+    includes `Retry-After` (seconds) and `X-RateLimit-Reset` (Unix time).
+    Tenant-bound UI authentication is documented separately in `ui-api.oas.yaml`.
 servers:
   - url: http://localhost:8980
     description: Local Docker development server
@@ -57,7 +58,11 @@ paths:
         - name: X-Idempotency-Key
           in: header
           required: false
-          description: A tenant-scoped key that makes retries return the originally created event.
+          description: |
+            A tenant-scoped key for safe retries. Repeating the same validated
+            payload returns the original event with status `200` and
+            `Idempotency-Replayed: true`; using the key with a different payload
+            returns `409`. Without a key, repeated requests can create multiple events.
           schema:
             type: string
             maxLength: 255
@@ -85,7 +90,7 @@ paths:
                     created_at: "2026-05-01T22:00:00Z"
                     message: user 42 created invoice inv_1
         '200':
-          description: "An identical idempotent request was replayed. The response includes `Idempotency-Replayed: true`."
+          description: An identical idempotent request was replayed. The body is the original event.
           headers:
             Idempotency-Replayed:
               schema:
@@ -101,6 +106,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConflictError'
+              example:
+                message: The idempotency key was already used with a different request.
         '401':
           description: Missing or invalid API key
           content:
@@ -120,7 +127,7 @@ paths:
               examples:
                 missingFields:
                   value:
-                    message: The given data was invalid.
+                    message: The actor type field is required. (and 4 more errors)
                     errors:
                       actor_type:
                         - The actor type field is required.
@@ -132,6 +139,8 @@ paths:
                         - The target type field is required.
                       target_id:
                         - The target id field is required.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
   /api/v1/timeline:
     get:
       tags:
@@ -196,7 +205,7 @@ paths:
         - name: page
           in: query
           required: false
-          description: Page number for paginated results.
+          description: Page number for offset pagination; omit when using a cursor.
           schema:
             type: integer
             minimum: 1
@@ -213,18 +222,23 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Opaque cursor returned in a cursor-paginated response link.
+          description: |
+            Opaque cursor from `meta.next_cursor` or `meta.prev_cursor` in a
+            cursor-paginated response. Supplying it also selects cursor pagination.
           schema:
             type: string
       responses:
         '200':
-          description: Paginated timeline events
+          description: |
+            Paginated timeline events. The default offset response includes
+            page numbers and totals; the cursor response includes opaque cursors
+            and has no page number or total.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TimelineEventCollection'
               examples:
-                paginated:
+                offset:
                   value:
                     data:
                       - id: 019de5b9-705b-72dc-89cf-35a134013e89
@@ -235,7 +249,7 @@ paths:
                         target_type: user
                         target_id: target-1
                         log_level: info
-                        metadata: {}
+                        metadata: []
                         occurred_at: "2026-05-01T22:01:00Z"
                         created_at: "2026-05-01T22:01:00Z"
                         message: system actor-2 created user target-1
@@ -275,6 +289,32 @@ paths:
                       per_page: 50
                       to: 2
                       total: 2
+                cursor:
+                  summary: First cursor page captured from the feature environment with a one-event page size
+                  value:
+                    data:
+                      - id: 01a120fc-eb8a-722d-9a1c-44a8f3dac6fc
+                        tenant_id: 01a120fc-eb84-7136-838e-ff26f1533d7c
+                        actor_type: user
+                        actor_id: "1"
+                        action: created
+                        target_type: invoice
+                        target_id: invoice-1
+                        log_level: info
+                        metadata: []
+                        occurred_at: "2026-10-09T14:05:48.000000Z"
+                        created_at: "2026-10-09T14:06:49.000000Z"
+                        message: user 1 created invoice invoice-1
+                    links:
+                      first: null
+                      last: null
+                      prev: null
+                      next: http://localhost:8980/api/v1/timeline?pagination=cursor&cursor=eyJvY2N1cnJlZF9hdCI6IjIwMjYtMTAtMDkgMTQ6MDU6NDgiLCJjcmVhdGVkX2F0IjoiMjAyNi0xMC0wOSAxNDowNjo0OSIsImlkIjoiMDFhMTIwZmMtZWI4YS03MjJkLTlhMWMtNDRhOGYzZGFjNmZjIiwiX3BvaW50c1RvTmV4dEl0ZW1zIjp0cnVlfQ
+                    meta:
+                      path: http://localhost:8980/api/v1/timeline
+                      per_page: 1
+                      next_cursor: eyJvY2N1cnJlZF9hdCI6IjIwMjYtMTAtMDkgMTQ6MDU6NDgiLCJjcmVhdGVkX2F0IjoiMjAyNi0xMC0wOSAxNDowNjo0OSIsImlkIjoiMDFhMTIwZmMtZWI4YS03MjJkLTlhMWMtNDRhOGYzZGFjNmZjIiwiX3BvaW50c1RvTmV4dEl0ZW1zIjp0cnVlfQ
+                      prev_cursor: null
         '401':
           description: Missing or invalid API key or UI bearer token
           content:
@@ -294,11 +334,43 @@ paths:
               examples:
                 invalidPage:
                   value:
-                    message: The given data was invalid.
+                    message: The page must be at least 1.
                     errors:
                       page:
                         - The page must be at least 1.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 components:
+  responses:
+    TooManyRequests:
+      description: The API-wide request limit was exceeded.
+      headers:
+        X-RateLimit-Limit:
+          description: Maximum requests allowed in the current window.
+          schema:
+            type: integer
+            example: 60
+        X-RateLimit-Remaining:
+          description: Requests remaining in the current window.
+          schema:
+            type: integer
+            example: 0
+        Retry-After:
+          description: Seconds until the request can be retried.
+          schema:
+            type: integer
+            example: 60
+        X-RateLimit-Reset:
+          description: Unix timestamp in seconds when the current window resets.
+          schema:
+            type: integer
+            example: 1791554833
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RateLimitError'
+          example:
+            message: Too Many Attempts.
   securitySchemes:
     ApiKeyAuth:
       type: apiKey
@@ -347,9 +419,13 @@ components:
             - fatal
           default: info
         metadata:
-          type: object
-          default: {}
-          additionalProperties: true
+          description: JSON object or list. An omitted or empty value is returned as an empty list.
+          default: []
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: array
+              items: {}
         occurred_at:
           type:
             - string
@@ -392,17 +468,14 @@ components:
           type:
             - string
             - "null"
-          enum:
-            - trace
-            - debug
-            - info
-            - warn
-            - error
-            - fatal
-            - null
+          description: Stored level. Legacy events may contain other values, including `success` and `warning`.
         metadata:
-          type: object
-          additionalProperties: true
+          description: JSON object or list. Omitted or empty metadata currently appears as `[]`.
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: array
+              items: {}
         occurred_at:
           type:
             - string
@@ -416,6 +489,11 @@ components:
         message:
           type: string
     TimelineEventCollection:
+      description: Offset and cursor pagination have different metadata shapes.
+      oneOf:
+        - $ref: '#/components/schemas/OffsetTimelineEventCollection'
+        - $ref: '#/components/schemas/CursorTimelineEventCollection'
+    OffsetTimelineEventCollection:
       type: object
       required:
         - data
@@ -429,7 +507,22 @@ components:
         links:
           $ref: '#/components/schemas/PaginationLinks'
         meta:
-          $ref: '#/components/schemas/PaginationMeta'
+          $ref: '#/components/schemas/OffsetPaginationMeta'
+    CursorTimelineEventCollection:
+      type: object
+      required:
+        - data
+        - links
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+        links:
+          $ref: '#/components/schemas/CursorPaginationLinks'
+        meta:
+          $ref: '#/components/schemas/CursorPaginationMeta'
     PaginationLinks:
       type: object
       required:
@@ -458,7 +551,29 @@ components:
             - string
             - "null"
           format: uri
-    PaginationMeta:
+    CursorPaginationLinks:
+      type: object
+      required:
+        - first
+        - last
+        - prev
+        - next
+      properties:
+        first:
+          type: "null"
+        last:
+          type: "null"
+        prev:
+          type:
+            - string
+            - "null"
+          format: uri
+        next:
+          type:
+            - string
+            - "null"
+          format: uri
+    OffsetPaginationMeta:
       type: object
       required:
         - current_page
@@ -493,6 +608,29 @@ components:
             - "null"
         total:
           type: integer
+    CursorPaginationMeta:
+      type: object
+      required:
+        - path
+        - per_page
+        - next_cursor
+        - prev_cursor
+      properties:
+        path:
+          type: string
+          format: uri
+        per_page:
+          type: integer
+        next_cursor:
+          type:
+            - string
+            - "null"
+          description: Opaque token for the next page, or null at the end.
+        prev_cursor:
+          type:
+            - string
+            - "null"
+          description: Opaque token for the previous page, or null at the start.
     PaginationMetaLink:
       type: object
       required:
@@ -517,6 +655,14 @@ components:
         message:
           type: string
           example: Invalid API key.
+    RateLimitError:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: Too Many Attempts.
     ConflictError:
       type: object
       required:
@@ -533,7 +679,8 @@ components:
       properties:
         message:
           type: string
-          example: The given data was invalid.
+          description: Laravel summarizes the first validation error; the exact text depends on failed fields.
+          example: The actor type field is required. (and 4 more errors)
         errors:
           type: object
           additionalProperties:

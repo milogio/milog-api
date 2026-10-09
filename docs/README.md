@@ -9,3 +9,10 @@ This directory holds OpenAPI artifacts for MiLog.
   plus the remaining billing integration work.
 
 The legacy unversioned Passport API is not part of either supported contract.
+
+## Public API compatibility
+
+Additive response fields may appear in `/api/v1` responses. Clients should
+ignore fields they do not use. Breaking changes to public request or response
+contracts require a new API version. SDK package versions are independent of
+the API version; an SDK major version signals a breaking SDK interface change.
