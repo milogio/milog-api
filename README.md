@@ -9,7 +9,7 @@ The current project focus is the public `v1` API:
 
 This API uses:
 
-- PHP 8.5
+- PHP 8.5.12
 - Laravel 13
 - PostgreSQL
 - Redis
@@ -309,7 +309,7 @@ services, health checks, persistent named volumes, and Compose secrets.
 Build release images with a unique release tag:
 
 ```bash
-docker build -f docker/php-fpm/production.Dockerfile -t registry.example.com/milog-api/php:RELEASE .
+docker build --pull -f docker/php-fpm/production.Dockerfile -t registry.example.com/milog-api/php:RELEASE .
 docker build -f docker/nginx/production.Dockerfile -t registry.example.com/milog-api/nginx:RELEASE .
 ```
 

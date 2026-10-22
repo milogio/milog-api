@@ -23,7 +23,7 @@ services:
     build:
       context: .
       dockerfile: docker/php-fpm/Dockerfile
-    image: milog-php-fpm:8.5
+    image: milog-php-fpm:8.5.12
     container_name: "milog-phpfpm"
     depends_on:
       milog-postgres:

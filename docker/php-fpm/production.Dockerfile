@@ -10,7 +10,7 @@ RUN composer install \
     --no-scripts \
     --optimize-autoloader
 
-FROM php:8.5-fpm
+FROM php:8.5.12-fpm
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libonig-dev libpq-dev libxml2-dev libzip-dev \
