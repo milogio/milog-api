@@ -243,7 +243,8 @@ The first-party UI uses tenant-bound access tokens through:
 - `POST /api/v1/auth/logout`
 - `POST /api/v1/auth/logout-all`
 
-Create the Passport personal-access client once per environment:
+For the **local development stack**, create the Passport personal-access client
+once:
 
 ```bash
 docker compose exec -T milog-phpfpm php artisan passport:client --personal --provider=users --name="MiLog UI"
@@ -252,9 +253,12 @@ docker compose exec -T milog-phpfpm php artisan passport:client --personal --pro
 Production also requires `MILOG_PASSPORT_PRIVATE_KEY_B64` and
 `MILOG_PASSPORT_PUBLIC_KEY_B64`. Set them to the base64-encoded output of the
 environment's Passport signing keys; signing keys are excluded from production
-images.
+images. In production, run Artisan through the Compose `api` service's
+entrypoint as shown in the [deployment runbook](docs/production-fullhost-v4.md);
+`docker compose exec` does not load the entrypoint's secret exports for a new
+process.
 
-Grant an existing user access to a tenant:
+In local development, grant an existing user access to a tenant:
 
 ```bash
 docker compose exec -T milog-phpfpm php artisan milog:grant-tenant user@example.com TENANT_UUID --role=member
