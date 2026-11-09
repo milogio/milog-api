@@ -7,6 +7,7 @@ use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvi
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ReadinessController;
 
 class RouteServiceProvider extends ServiceProvider
 {
@@ -68,6 +69,8 @@ class RouteServiceProvider extends ServiceProvider
      */
     public function map()
     {
+        Route::get('/ready', ReadinessController::class);
+
         $this->mapApiRoutes();
 
         $this->mapWebRoutes();

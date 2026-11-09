@@ -25,7 +25,8 @@ COPY . ./
 COPY --from=vendor /app/vendor ./vendor
 COPY docker/php-fpm/production-entrypoint.sh /usr/local/bin/milog-production-entrypoint
 
-RUN chmod +x /usr/local/bin/milog-production-entrypoint \
+RUN php artisan package:discover --ansi \
+    && chmod +x /usr/local/bin/milog-production-entrypoint \
     && chown -R www-data:www-data storage bootstrap/cache
 
 ENTRYPOINT ["milog-production-entrypoint"]

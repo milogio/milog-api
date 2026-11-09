@@ -1,0 +1,16 @@
+# Caddy v2. Install this on the API VM as /etc/caddy/Caddyfile. Caddy obtains TLS for
+# api.milog.ca; Nginx is only reachable on this host's loopback interface.
+api.milog.ca {
+	@readiness path /ready
+	respond @readiness 404
+
+	reverse_proxy 127.0.0.1:8080 {
+		header_up Host api.milog.ca
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Host api.milog.ca
+		header_up X-Forwarded-Proto https
+		header_up -X-Forwarded-Port
+		header_up -X-Real-IP
+		header_up -Forwarded
+	}
+}

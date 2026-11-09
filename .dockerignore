@@ -1,9 +1,11 @@
 .env
 .env.*
+docker/production.env
 !.env.example
 .git
 .phpunit.cache
 build
+bootstrap/cache/*.php
 docker/certs
 docker/data
 docker/logs

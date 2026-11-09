@@ -302,27 +302,11 @@ Current coverage includes:
 
 ## Production Images
 
-The default `docker-compose.yml` is for local development. Production uses
-`docker-compose.production.yml`, immutable application images, internal data
-services, health checks, persistent named volumes, and Compose secrets.
-
-Build release images with a unique release tag:
-
-```bash
-docker build --pull -f docker/php-fpm/production.Dockerfile -t registry.example.com/milog-api/php:RELEASE .
-docker build -f docker/nginx/production.Dockerfile -t registry.example.com/milog-api/nginx:RELEASE .
-```
-
-Provide the required values shown in `docker/production.env.example` through
-the deployment environment, then validate and start the production topology:
-
-```bash
-docker compose --env-file docker/production.env -f docker-compose.production.yml config --quiet
-docker compose --env-file docker/production.env -f docker-compose.production.yml up -d
-```
-
-Terminate TLS at the load balancer or ingress in front of the production Nginx
-container. PostgreSQL and Redis have no host-published ports.
+The default `docker-compose.yml` is for local development. The production
+topology uses digest-pinned PHP and Nginx images, host Caddy, private PostgreSQL
+and Redis, persistent volumes, Compose secrets, and application readiness.
+See the [FullHost Value 4 deployment runbook](docs/production-fullhost-v4.md)
+for build, setup, migration, health-check, backup, and rollback steps.
 
 ## Project Notes
 

@@ -2,6 +2,11 @@ services:
   postgres:
     image: postgres:17.9-alpine
     restart: unless-stopped
+    logging: &bounded-logs
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       POSTGRES_DB: milog
       POSTGRES_USER: milog
@@ -10,6 +15,9 @@ services:
       - db_password
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    mem_limit: 1g
+    cpus: "0.75"
+    shm_size: 128m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U milog -d milog"]
       interval: 10s
@@ -21,9 +29,12 @@ services:
   redis:
     image: redis:8.2.9-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    logging: *bounded-logs
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
     volumes:
       - redis-data:/data
+    mem_limit: 256m
+    cpus: "0.25"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -35,10 +46,13 @@ services:
   api:
     image: "${MILOG_PHP_IMAGE:?Set MILOG_PHP_IMAGE to an immutable production image}"
     restart: unless-stopped
+    logging: *bounded-logs
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
+      APP_URL: https://api.milog.ca
       LOG_CHANNEL: stderr
+      LOG_LEVEL: info
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -59,6 +73,8 @@ services:
       MAIL_USERNAME: "${MILOG_MAIL_USERNAME:?Set MILOG_MAIL_USERNAME}"
       MAIL_FROM_ADDRESS: "${MILOG_MAIL_FROM_ADDRESS:?Set MILOG_MAIL_FROM_ADDRESS}"
       MAIL_FROM_NAME: MiLog
+    mem_limit: 1280m
+    cpus: "1.25"
     secrets:
       - app_key
       - db_password
@@ -76,18 +92,23 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - backend
+      backend: {}
+      edge:
+        gw_priority: 1
 
   nginx:
     image: "${MILOG_NGINX_IMAGE:?Set MILOG_NGINX_IMAGE to an immutable production image}"
     restart: unless-stopped
+    logging: *bounded-logs
     ports:
-      - "${MILOG_HTTP_PORT:-8080}:80"
+      - "127.0.0.1:8080:80"
+    mem_limit: 128m
+    cpus: "0.25"
     depends_on:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      test: ["CMD", "wget", "-q", "--spider", "-T", "5", "--header", "Host: api.milog.ca", "http://127.0.0.1/ready"]
       interval: 10s
       timeout: 5s
       retries: 5

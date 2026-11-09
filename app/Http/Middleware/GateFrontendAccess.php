@@ -44,12 +44,10 @@ class GateFrontendAccess
                 'outcome' => $outcome,
                 'purpose' => $purpose,
                 'method' => $request->method(),
-                'path' => $request->path(),
+                'path' => $route ? $route->uri() : null,
                 'route_name' => $routeName,
                 'ip' => $request->ip(),
                 'user_id' => optional($request->user())->id,
-                'referer' => $request->headers->get('referer'),
-                'user_agent' => $request->userAgent(),
             ]);
     }
 
