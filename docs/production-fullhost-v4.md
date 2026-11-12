@@ -31,6 +31,55 @@ Compose file is for local development.
 
 ## Build and pin a release
 
+### Publish with GitHub Actions (recommended)
+
+The manually triggered `Publish API images` workflow in
+`.github/workflows/publish-api-images.yml` runs the PostgreSQL-backed PHPUnit
+suite before publishing the production PHP and Nginx images from the same
+commit. It uses GitHub's built-in `GITHUB_TOKEN`; do not add the production
+pull tokens, application keys, database password, or SMTP credentials as build
+secrets. Test credentials and the test application key are disposable.
+
+1. Commit and push the workflow and release source to GitHub. The workflow
+   must exist on the default branch before GitHub shows its manual trigger.
+2. In `milogio/milog-api`, open **Actions → Publish API images → Run workflow**.
+   Select the reviewed release branch (normally the default branch) and run it.
+   The workflow only publishes when manually requested; pushes do not publish.
+3. Organization/repository Actions policies must allow the pinned official
+   `actions/checkout` and Docker actions. Organization package-creation policy
+   must permit this repository to create private container packages. The
+   publishing job requests `packages: write`; no publishing PAT is required.
+4. Wait for both the test and publishing jobs to succeed. Under the run's
+   **Summary**, copy `MILOG_PHP_IMAGE` and `MILOG_NGINX_IMAGE` into the API VM's
+   `/opt/milog-api/docker/production.env`. Use the pair from one successful
+   run, never a partial pair from a failed run.
+5. Verify both packages are private under the organization **Packages** page.
+   New GHCR packages default to private. They are associated with this source
+   repository. Ensure the account behind each server pull token has read
+   access to its required package and any required SSO authorization.
+
+The workflow derives the namespace from the repository owner. For this
+repository it publishes `ghcr.io/milogio/milog-api-php` and
+`ghcr.io/milogio/milog-api-nginx`. Images target `linux/amd64`, matching the
+planned x86-64 FullHost VM; verify with `uname -m` (`x86_64`) before deploying.
+Change the workflow platform if provisioning a different architecture.
+
+Each image is labelled with its source and commit. Tags include the full
+commit, run ID, and attempt, so a rerun does not overwrite the prior run's
+release tag. Production always uses the reported digests, not these tags.
+Keep earlier deployed image pairs for rollback. This workflow does not deploy,
+run production migrations, or establish live-service readiness.
+
+If publishing fails with `denied` or `403`, check organization Actions/package
+policies and the package's **Manage Actions access** settings. An existing
+package created manually may need this repository granted write access.
+To verify production pull access, authenticate on the API VM with
+`sudo docker login ghcr.io --username chrsc` using its classic `read:packages`
+token, then run the production Compose `pull` command below. Login success
+alone does not prove permission to read a particular private package.
+
+### Manual build alternative
+
 Build on a trusted build host from a reviewed commit. Use one unique release
 tag for both images, push them, then copy their registry digests into
 `MILOG_PHP_IMAGE` and `MILOG_NGINX_IMAGE`. The VM pulls by digest; it never

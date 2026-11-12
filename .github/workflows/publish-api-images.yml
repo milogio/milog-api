@@ -1,0 +1,136 @@
+name: Publish API images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-api-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test API with PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Prepare disposable test environment
+        run: cp .env.example .env
+
+      - name: Build test runtime
+        run: docker compose build --pull milog-phpfpm
+
+      - name: Start test dependencies
+        run: docker compose up -d --wait --wait-timeout 120 milog-postgres milog-redis
+
+      - name: Install locked dependencies and generate disposable application key
+        run: |
+          docker compose run --rm --no-deps milog-phpfpm composer install --no-interaction --prefer-dist --no-progress
+          docker compose run --rm --no-deps milog-phpfpm php artisan key:generate --force
+
+      - name: Run unit and feature tests
+        run: docker compose run --rm --no-deps milog-phpfpm vendor/bin/phpunit
+
+      - name: Stop test services
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  publish:
+    name: Publish production image pair
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out the same release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set image names and unique release tag
+        id: release
+        shell: bash
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "php_image=ghcr.io/${owner}/milog-api-php" >> "$GITHUB_OUTPUT"
+          echo "nginx_image=ghcr.io/${owner}/milog-api-nginx" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Authenticate to GitHub Container Registry
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish PHP image
+        id: php
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: docker/php-fpm/production.Dockerfile
+          platforms: linux/amd64
+          pull: true
+          push: true
+          tags: ${{ steps.release.outputs.php_image }}:${{ steps.release.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.release.outputs.tag }}
+            org.opencontainers.image.description=MiLog API PHP runtime
+          cache-from: type=gha,scope=milog-api-php
+          cache-to: type=gha,mode=max,scope=milog-api-php
+
+      - name: Build and publish Nginx image
+        id: nginx
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: docker/nginx/production.Dockerfile
+          platforms: linux/amd64
+          pull: true
+          push: true
+          tags: ${{ steps.release.outputs.nginx_image }}:${{ steps.release.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.release.outputs.tag }}
+            org.opencontainers.image.description=MiLog API Nginx runtime
+          cache-from: type=gha,scope=milog-api-nginx
+          cache-to: type=gha,mode=max,scope=milog-api-nginx
+
+      - name: Report production digest references
+        env:
+          PHP_IMAGE: ${{ steps.release.outputs.php_image }}
+          NGINX_IMAGE: ${{ steps.release.outputs.nginx_image }}
+          PHP_DIGEST: ${{ steps.php.outputs.digest }}
+          NGINX_DIGEST: ${{ steps.nginx.outputs.digest }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          {
+            echo '## Published MiLog API release'
+            echo
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Release tag: ${RELEASE_TAG}"
+            echo
+            echo 'Copy these two lines into /opt/milog-api/docker/production.env:'
+            echo '```ini'
+            echo "MILOG_PHP_IMAGE=${PHP_IMAGE}@${PHP_DIGEST}"
+            echo "MILOG_NGINX_IMAGE=${NGINX_IMAGE}@${NGINX_DIGEST}"
+            echo '```'
+            echo
+            echo 'Publishing does not deploy or migrate production. Deploy this pair together and complete the production readiness checks.'
+          } >> "$GITHUB_STEP_SUMMARY"
