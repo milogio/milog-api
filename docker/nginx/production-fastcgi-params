@@ -22,7 +22,7 @@ fastcgi_param REDIRECT_STATUS 200;
 fastcgi_param HTTP_HOST api.milog.ca;
 fastcgi_param HTTP_ACCEPT $http_accept;
 fastcgi_param HTTP_AUTHORIZATION $http_authorization;
-fastcgi_param HTTP_X_API_KEY $http_x_api_key;
+fastcgi_param HTTP_X_API_KEY $http_x_api_key if_not_empty;
 fastcgi_param HTTP_X_IDEMPOTENCY_KEY $http_x_idempotency_key;
 fastcgi_param HTTP_X_REQUESTED_WITH $http_x_requested_with;
 fastcgi_param HTTP_X_FORWARDED_FOR $http_x_forwarded_for;

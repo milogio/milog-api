@@ -20,8 +20,9 @@ class ResolveTimelineTenant
     public function handle($request, Closure $next)
     {
         $apiKeyHeader = config('milog.api_keys.header', 'X-API-Key');
+        $hasApiKey = trim((string) $request->header($apiKeyHeader, '')) !== '';
 
-        if ($request->hasHeader($apiKeyHeader) || ! $request->bearerToken()) {
+        if ($hasApiKey || ! $request->bearerToken()) {
             return $this->apiKeys->handle($request, $next);
         }
 

@@ -230,6 +230,32 @@ class UiAuthenticationTest extends TestCase
             ->assertJsonPath('data.0.target_id', 'owned');
     }
 
+    public function testUiTokenCanReadTimelineWithAnEmptyApiKeyHeader()
+    {
+        [$user, $tenant] = $this->makeMember();
+        $login = $this->login($user, $tenant);
+
+        // Production FastCGI may provide an empty header for a missing API key.
+        foreach (['', '   '] as $emptyKey) {
+            $this->withToken($login->json('access_token'))
+                ->withHeader('X-API-Key', $emptyKey)
+                ->getJson('/api/v1/timeline')
+                ->assertOk();
+        }
+    }
+
+    public function testNonEmptyInvalidApiKeyStillTakesPrecedenceOverUiToken()
+    {
+        [$user, $tenant] = $this->makeMember();
+        $login = $this->login($user, $tenant);
+
+        $this->withToken($login->json('access_token'))
+            ->withHeader('X-API-Key', 'invalid-producer-key')
+            ->getJson('/api/v1/timeline')
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Invalid API key.');
+    }
+
     public function testUiTokenLogLevelFilterRemainsTenantScoped()
     {
         [$user, $tenant] = $this->makeMember();
