@@ -30,10 +30,11 @@ jobs:
       - name: Start test dependencies
         run: docker compose up -d --wait --wait-timeout 120 milog-postgres milog-redis
 
-      - name: Install locked dependencies and generate disposable application key
+      - name: Install locked dependencies and generate disposable test keys
         run: |
           docker compose run --rm --no-deps milog-phpfpm composer install --no-interaction --prefer-dist --no-progress
           docker compose run --rm --no-deps milog-phpfpm php artisan key:generate --force
+          docker compose run --rm --no-deps milog-phpfpm php artisan passport:keys --force
 
       - name: Run unit and feature tests
         run: docker compose run --rm --no-deps milog-phpfpm vendor/bin/phpunit

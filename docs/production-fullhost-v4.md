@@ -38,7 +38,9 @@ The manually triggered `Publish API images` workflow in
 suite before publishing the production PHP and Nginx images from the same
 commit. It uses GitHub's built-in `GITHUB_TOKEN`; do not add the production
 pull tokens, application keys, database password, or SMTP credentials as build
-secrets. Test credentials and the test application key are disposable.
+secrets. Test credentials, the test application key, and the Passport signing
+pair are generated for the disposable test checkout. The fresh runner needs
+`passport:keys` before authentication tests; production keys are never used.
 
 1. Commit and push the workflow and release source to GitHub. The workflow
    must exist on the default branch before GitHub shows its manual trigger.
